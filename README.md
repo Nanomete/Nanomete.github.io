@@ -34,9 +34,17 @@ I am a dedicated and detail-oriented individual with a strong academic backgroun
 - NumPy
 - Scikit-Learn
 
+
 ---
 
 ## ✨ Summary
 
 I am committed to continuous learning and applying technical knowledge with professionalism, precision, and a strong sense of responsibility in every project I undertake.
+
+---
+
+# About Interactive Computer Graphics
+## 📚 Repository Description
+
+This repository presents my project developed for the Interactive Computer Graphics course. It showcases key geometric transformations, including scaling, rotation, and translation. The object used for testing is a sprite, represented as a pixel-based drawing character, to clearly demonstrate the effects of each transformation.
 
