@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Painting program</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<!--
+  โครงสร้างหน้าจอแบ่งเป็น 3 เลเยอร์หลัก (แยกอิสระจากกัน) ตามที่ขอ:
+  1) TOOLBAR LAYER   -> แถบเครื่องมือด้านซ้าย (ปากกา, ยางลบ, คัดลอก/ซ้อนชั้น, วงรี)
+  2) CANVAS LAYER    -> พื้นที่วาดภาพสีขาว
+  3) COLOR PALETTE LAYER -> แถบเลือกสีด้านล่างของ canvas
+  ทั้ง 3 เลเยอร์อยู่ภายใน "Stage/App Background" สีเทาเข้ม ซึ่งเป็น container นอกสุด
+-->
+
+<body class="min-h-screen bg-[#4d4d4d] overflow-hidden flex items-center justify-center">
+
+    <!-- ===================== APP STAGE (BACKGROUND CONTAINER) ===================== -->
+    <!-- #stage คือกลุ่มก้อนเดียวที่รวม 3 เลเยอร์ไว้ด้วยกัน เพื่อให้จัด center + scale
+       ทั้งกลุ่มพร้อมกันได้แบบสัดส่วนคงเดิม (ตัว body ทำหน้าที่ center ในแนวจอ) -->
+    <div id="stage" class="flex items-center gap-8">
+
+        <!-- ===================== LAYER 1: TOOLBAR (แยก layer จาก canvas) ===================== -->
+        <!-- กล่องเครื่องมือฝั่งซ้าย ลอยอิสระ ไม่ผูกกับ canvas -->
+        <div class="bg-[#8a8a8a] rounded-md p-2 flex flex-col gap-2 shadow-lg shrink-0">
+
+            <!-- Tool: Pencil / Edit -->
+            <button type="button" title="ปากกา (Pencil)" class="w-16 h-16 bg-[#d9d9d9] rounded-sm shadow-md flex items-center justify-center
+               hover:bg-white active:translate-y-px transition"
+               id="pencil">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black"
+                    stroke-width="1.5" class="w-7 h-7">
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5Z" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                    <path d="M14.5 5.5 18.5 9.5" stroke-linecap="round" />
+                </svg>
+            </button>
+
+            <!-- Tool: Eraser -->
+            <button type="button" title="ยางลบ (Eraser)" class="w-16 h-16 bg-[#d9d9d9] rounded-sm shadow-md flex items-center justify-center
+               hover:bg-white active:translate-y-px transition"
+               id="eraser">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-7 h-7">
+                    <path d="M15 3 21 9 10 20H5a1 1 0 0 1-.7-.3L2 17.3a1 1 0 0 1 0-1.4L13.6 3.3a1 1 0 0 1 1.4 0Z"
+                        fill="black" stroke="black" stroke-width="1" stroke-linejoin="round" />
+                    <path d="M8 20H21" stroke="black" stroke-width="1.5" stroke-linecap="round" />
+                </svg>
+            </button>
+
+            <!-- Tool: Draw Rectangle -->
+            <button type="button" title="วาดสี่เหลี่ยม (Rectangle)" class="w-16 h-16 bg-[#d9d9d9] rounded-sm shadow-md flex items-center justify-center
+               hover:bg-white active:translate-y-px transition"
+               id="rect">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" 
+                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rectangle-horizontal-icon lucide-rectangle-horizontal"><rect width="20" height="12" x="2" y="6" rx="2"/>
+                </svg>
+            </button>
+
+            <!-- Tool: Draw Rectangle Filled -->
+            <button type="button" title="วาดสี่เหลี่ยม (Rectangle)" class="w-16 h-16 bg-[#d9d9d9] rounded-sm shadow-md flex items-center justify-center
+               hover:bg-white active:translate-y-px transition"
+               id="rectfill">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" 
+                fill="" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rectangle-horizontal-icon lucide-rectangle-horizontal"><rect width="20" height="12" x="2" y="6" rx="2"/></svg>
+            </button>
+            
+            <!-- Tool: DrawCircle outline shape -->
+            <button type="button" title="วงรี (Ellipse)" class="w-16 h-16 bg-[#d9d9d9] rounded-sm shadow-md flex items-center justify-center
+               hover:bg-white active:translate-y-px transition"
+               id="ovaloutline">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black"
+                    stroke-width="1.5" class="w-7 h-7">
+                    <ellipse cx="12" cy="12" rx="9" ry="6" />
+                </svg>
+            </button>
+
+            <!-- Tool: Draw Circle shape -->
+            <button type="button" title="วงรี (Ellipse)" class="w-16 h-16 bg-[#d9d9d9] rounded-sm shadow-md flex items-center justify-center
+               hover:bg-white active:translate-y-px transition"
+               id="oval">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="" stroke="black"
+                    stroke-width="1.5" class="w-7 h-7">
+                    <ellipse cx="12" cy="12" rx="9" ry="6" />
+                </svg>
+            </button>
+
+            <!-- Tool: Bucket color -->
+            <button type="button" title="ถังสี (Bucket)" class="w-16 h-16 bg-[#d9d9d9] rounded-sm shadow-md flex items-center justify-center
+               hover:bg-white active:translate-y-px transition"
+               id="bucket">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-paint-bucket-icon lucide-paint-bucket"><path d="M11 7 6 2"/><path d="M18.992 12H2.041"/><path d="M21.145 18.38A3.34 3.34 0 0 1 20 16.5a3.3 3.3 0 0 1-1.145 1.88c-.575.46-.855 1.02-.855 1.595A2 2 0 0 0 20 22a2 2 0 0 0 2-2.025c0-.58-.285-1.13-.855-1.595"/><path d="m8.5 4.5 2.148-2.148a1.205 1.205 0 0 1 1.704 0l7.296 7.296a1.205 1.205 0 0 1 0 1.704l-7.592 7.592a3.615 3.615 0 0 1-5.112 0l-3.888-3.888a3.615 3.615 0 0 1 0-5.112L5.67 7.33"/></svg>
+            </button>
+
+        </div>
+        <!-- ===================== END LAYER 1: TOOLBAR ===================== -->
+
+
+        <!-- ===================== RIGHT COLUMN (CANVAS + PALETTE stack) ===================== -->
+        <!-- คอลัมน์ขวา ใช้จัด canvas กับ color palette ให้อยู่แนวตั้งเดียวกัน -->
+        <div class="flex flex-col items-center gap-6">
+
+            <!-- ===================== LAYER 2: CANVAS (แยก layer จาก tools) ===================== -->
+            <!-- พื้นที่วาดภาพสีขาว ไม่มีเครื่องมือใด ๆ อยู่ในเลเยอร์นี้ -->
+            <canvas id="canvas" width="650" height="480" 
+                class="w-[650px] h-[480px] bg-white rounded-sm shadow-2xl"
+                title="Canvas" style="width:650px; height: 480px; border:1px solid #000; image-rendering: pixelated;">
+            </canvas>
+            <!-- ===================== END LAYER 2: CANVAS ===================== -->
+
+
+            <!-- ===================== LAYER 3: COLOR PALETTE ===================== -->
+            <!-- แถบเลือกสี อยู่ใต้ canvas แต่เป็นคนละ layer/element กับ canvas -->
+            <div class="bg-[#8a8a8a] rounded-md p-3 flex gap-3 shadow-lg">
+                <button type="button" title="ดำ (Black)" id="black"
+                    class="w-14 h-14 rounded-sm shadow-md bg-black hover:scale-105 active:scale-95 transition"></button>
+                <button type="button" title="ชมพูบานเย็น (Magenta)" id="pink"
+                    class="w-14 h-14 rounded-sm shadow-md bg-fuchsia-500 hover:scale-105 active:scale-95 transition"></button>
+                <button type="button" title="เหลือง (Yellow)" id="yellow"
+                    class="w-14 h-14 rounded-sm shadow-md bg-yellow-400 hover:scale-105 active:scale-95 transition"></button>
+                <button type="button" title="น้ำเงิน (Blue)" id="blue"
+                    class="w-14 h-14 rounded-sm shadow-md bg-blue-600 hover:scale-105 active:scale-95 transition"></button>
+                <button type="button" title="เขียว (Green)" id="green"
+                    class="w-14 h-14 rounded-sm shadow-md bg-green-500 hover:scale-105 active:scale-95 transition"></button>
+                <button type="button" title="แดง (Red)" id="red"
+                    class="w-14 h-14 rounded-sm shadow-md bg-red-600 hover:scale-105 active:scale-95 transition"></button>
+            </div>
+            <!-- ===================== END LAYER 3: COLOR PALETTE ===================== -->
+
+        </div>
+        <!-- ===================== END RIGHT COLUMN ===================== -->
+
+    </div>
+    <!-- ===================== END APP STAGE ===================== -->
+    <script src="script.js">
+        
+    </script>
+
+</body>
+
+</html>
