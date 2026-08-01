@@ -1,11 +1,15 @@
 # 📁 Nanomete/Nanomete.github.io
 
-### 📌 Repository Official
-[🔗 Nanomete/Nanomete.github.io](https://nanomete.github.io/index.html)
-
+## 📌 Repository Official
 ```bash
 git clone https://github.com/Nanomete/Nanomete.github.io.git
 ```
+
+### Workshop space
+[🔗 workshop 1](https://nanomete.github.io/index.html)
+
+[🔗 workshop 2](https://nanomete.github.io/geogen/index.html)
+
 
 ## 👤 Personal Profile
 
@@ -56,6 +60,3 @@ I am committed to continuous learning and applying technical knowledge with prof
 This repository presents my project developed for the Interactive Computer Graphics course. It showcases key geometric transformations, including scaling, rotation, and translation. The object used for testing is a sprite, represented as a pixel-based drawing character, to clearly demonstrate the effects of each transformation.
 
 ---
-
-## 🛠️ My Workshop
-- [Workshop 1](https://github.com/Nanomete/Nanomete.github.io/blob/main/KBInteractive_Sprite.html)
