@@ -1,11 +1,93 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="th">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Character + Skybox Scene | Three.js</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', system-ui, sans-serif; }
+  canvas { display: block; }
+
+  #loading {
+    position: fixed; inset: 0;
+    background: radial-gradient(circle at 50% 40%, #1a2340 0%, #05070f 70%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #fff; z-index: 50; transition: opacity 0.6s ease;
+  }
+  #loading .spinner {
+    width: 46px; height: 46px; border-radius: 50%;
+    border: 4px solid rgba(255,255,255,0.15); border-top-color: #7fd0ff;
+    animation: spin 0.9s linear infinite; margin-bottom: 18px;
+  }
+  #loading .label { font-size: 14px; letter-spacing: 0.5px; color: #aeeaff; opacity: 0.9; }
+  #loading .pct { font-size: 12px; color: #6f8bb3; margin-top: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+
+  #ui {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    display: flex; justify-content: center; gap: 8px;
+    padding: 16px; flex-wrap: wrap; z-index: 20;
+    pointer-events: none;
+  }
+  #ui button {
+    pointer-events: auto;
+    background: rgba(15, 22, 40, 0.65);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #eaf6ff;
+    padding: 9px 16px;
+    border-radius: 999px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  #ui button:hover { background: rgba(60, 120, 200, 0.55); border-color: rgba(255,255,255,0.35); transform: translateY(-2px); }
+  #ui button.active { background: #3f8ce8; border-color: #9cd0ff; box-shadow: 0 0 14px rgba(80,160,255,0.6); }
+
+  #title {
+    position: fixed; top: 18px; left: 20px; z-index: 20;
+    color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,0.6);
+    pointer-events: none;
+  }
+  #title h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.3px; }
+  #title p { font-size: 12px; color: #bcd4f0; margin-top: 4px; opacity: 0.85; }
+
+  #hint {
+    position: fixed; top: 18px; right: 20px; z-index: 20;
+    color: #cfe4ff; font-size: 12px; text-align: right;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.6); opacity: 0.75;
+    pointer-events: none;
+  }
+</style>
 </head>
 <body>
-    <script src="webGL.js"></script>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <div class="label">กำลังโหลดฉากและตัวละคร...</div>
+  <div class="pct">0%</div>
+</div>
+
+<div id="title">
+  <h1>Character Viewer — Three.js</h1>
+  <p>Model, Ground &amp; Dynamic Skybox</p>
+</div>
+
+<div id="hint">ลากซ้ายเพื่อหมุนกล้อง • ลากขวา/สโครลเพื่อซูม</div>
+
+<div id="ui"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module" src="script.js"></script>
 </body>
 </html>
