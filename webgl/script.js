@@ -17,7 +17,6 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.85;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-// physically-based lighting units (default in modern three.js, kept explicit for clarity)
 renderer.useLegacyLights = false;
 document.body.appendChild(renderer.domElement);
 
@@ -44,8 +43,6 @@ const skyParams = {
   azimuth: 140
 };
 
-// Environment map generation from the sky, used for image-based lighting (IBL)
-// so PBR materials on the character get physically plausible reflections/ambient light.
 const pmremGenerator = new THREE.PMREMGenerator(renderer);
 const sceneEnv = new THREE.Scene();
 let envRenderTarget;
@@ -74,6 +71,14 @@ function updateSky() {
   scene.background = envRenderTarget.texture;
 }
 
+let skyUpdatePending = false;
+function scheduleSkyUpdate() {
+  if (!skyUpdatePending) {
+    skyUpdatePending = true;
+    requestAnimationFrame(() => { updateSky(); skyUpdatePending = false; });
+  }
+}
+
 // ---------- Lighting (warm desert sun) ----------
 const hemiLight = new THREE.HemisphereLight(0xffe6bf, 0xb98a52, 0.55);
 scene.add(hemiLight);
@@ -93,12 +98,9 @@ scene.add(sunLight.target);
 
 updateSky();
 
-// warm hazy fog to sell the desert heat / distance haze
 scene.fog = new THREE.FogExp2(0xe0b988, 0.01);
 
 // ---------- Ground: procedural sand dunes ----------
-
-// lightweight value-noise (no external noise library needed)
 function hash(x, y) {
   const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123;
   return s - Math.floor(s);
@@ -122,21 +124,15 @@ function fbm(x, y, octaves = 5) {
   }
   return total / maxAmp;
 }
-
 function duneHeight(x, z) {
-  // large rolling dune ridges
   const ridges = Math.sin(x * 0.018 + z * 0.012) * 2.2 + Math.sin(x * 0.008 - z * 0.02) * 1.6;
-  // fine surface detail (fbm noise)
   const detail = fbm(x * 0.06, z * 0.06) * 1.4;
   let h = ridges + detail;
-
-  // flatten a clearing near the origin so the character stands on level ground
   const dist = Math.sqrt(x * x + z * z);
   const clearRadius = 4.5, fade = 6;
   const blend = THREE.MathUtils.smoothstep(dist, clearRadius, clearRadius + fade);
   return h * blend;
 }
-
 function makeSandTexture() {
   const size = 512;
   const canvas = document.createElement('canvas');
@@ -149,7 +145,6 @@ function makeSandTexture() {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, size, size);
 
-  // wind ripple streaks
   ctx.globalAlpha = 0.15;
   for (let i = 0; i < 40; i++) {
     ctx.strokeStyle = Math.random() > 0.5 ? '#fff3d6' : '#a97c40';
@@ -162,7 +157,6 @@ function makeSandTexture() {
   }
   ctx.globalAlpha = 1;
 
-  // fine grain speckle
   for (let i = 0; i < 12000; i++) {
     const x = Math.random() * size;
     const y = Math.random() * size;
@@ -215,12 +209,16 @@ manager.onLoad = () => {
 };
 
 // ---------- Character model (PBR via glTF metalness/roughness workflow + IBL) ----------
+// const MODEL_URL = 'https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb';
 const MODEL_URL = 'model/Robot_sample.glb';
 
 let mixer = null;
 let actions = {};
 let activeAction = null;
 const clock = new THREE.Clock();
+
+// materials on the character, tracked for the color/lighting panel
+const modelMaterials = []; // { material, originalColor }
 
 function fadeToAction(name, duration = 0.35) {
   if (!actions[name] || activeAction === actions[name]) return;
@@ -234,22 +232,27 @@ function fadeToAction(name, duration = 0.35) {
   });
 }
 
-  // function buildUI(names) {
-  //   const ui = document.getElementById('ui');
-  //   const preferredOrder = ['Idle', 'Walking', 'Running', 'Jump', 'Dance', 'Wave', 'Yes', 'No', 'ThumbsUp', 'Punch', 'Sitting'];
-  //   const ordered = preferredOrder.filter(n => names.includes(n)).concat(names.filter(n => !preferredOrder.includes(n)));
+// function buildUI(names) {
+//   const ui = document.getElementById('ui');
+//   const preferredOrder = ['Idle', 'Walking', 'Running', 'Jump', 'Dance', 'Wave', 'Yes', 'No', 'ThumbsUp', 'Punch', 'Sitting'];
+//   const ordered = preferredOrder.filter(n => names.includes(n)).concat(names.filter(n => !preferredOrder.includes(n)));
 
-  //   ordered.forEach(name => {
-  //     const btn = document.createElement('button');
-  //     btn.textContent = name;
-  //     btn.dataset.action = name;
-  //     btn.addEventListener('click', () => fadeToAction(name));
-  //     ui.appendChild(btn);
-  //   });
-  // }
+//   ordered.forEach(name => {
+//     const btn = document.createElement('button');
+//     btn.textContent = name;
+//     btn.dataset.action = name;
+//     btn.addEventListener('click', () => fadeToAction(name));
+//     ui.appendChild(btn);
+//   });
+// }
+
+function registerMaterial(mat) {
+  if (!mat || !mat.color) return;
+  if (modelMaterials.find(m => m.material === mat)) return;
+  modelMaterials.push({ material: mat, originalColor: mat.color.clone() });
+}
 
 function addFallbackCharacter() {
-  // Physically-based fallback humanoid (MeshPhysicalMaterial: roughness/metalness + clearcoat)
   const group = new THREE.Group();
   const mat = new THREE.MeshPhysicalMaterial({
     color: 0x3f6fa8,
@@ -259,6 +262,7 @@ function addFallbackCharacter() {
     clearcoatRoughness: 0.25,
     envMapIntensity: 1.0
   });
+  registerMaterial(mat);
 
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.35, 0.9, 6, 12), mat);
   body.position.y = 1.05;
@@ -290,10 +294,10 @@ loader.load(
       if (obj.isMesh) {
         obj.castShadow = true;
         obj.receiveShadow = true;
-        // boost image-based lighting response so the PBR material reacts to the desert sky
         if (obj.material) {
           obj.material.envMapIntensity = 1.2;
           obj.material.needsUpdate = true;
+          registerMaterial(obj.material);
         }
       }
     });
@@ -316,6 +320,59 @@ loader.load(
     addFallbackCharacter();
   }
 );
+
+// ---------- Settings panel wiring ----------
+const panel = document.getElementById('panel');
+const panelToggle = document.getElementById('panelToggle');
+panel.classList.add('open'); // start open on page load
+panelToggle.addEventListener('click', () => {
+  panel.classList.toggle('open');
+  panelToggle.classList.toggle('open');
+});
+
+function bindRange(id, valId, fmt, onChange) {
+  const input = document.getElementById(id);
+  const valEl = document.getElementById(valId);
+  input.addEventListener('input', () => {
+    const v = parseFloat(input.value);
+    if (valEl) valEl.textContent = fmt(v);
+    onChange(v);
+  });
+}
+
+// sky / sun direction
+bindRange('sunElevation', 'sunElevationVal', v => v + '°', v => { skyParams.elevation = v; scheduleSkyUpdate(); });
+bindRange('sunAzimuth', 'sunAzimuthVal', v => v + '°', v => { skyParams.azimuth = v; scheduleSkyUpdate(); });
+
+// directional light
+bindRange('sunIntensity', 'sunIntensityVal', v => v.toFixed(1), v => { sunLight.intensity = v; });
+document.getElementById('sunColor').addEventListener('input', e => {
+  sunLight.color.set(e.target.value);
+});
+
+// ambient / exposure
+bindRange('hemiIntensity', 'hemiIntensityVal', v => v.toFixed(2), v => { hemiLight.intensity = v; });
+bindRange('exposure', 'exposureVal', v => v.toFixed(2), v => { renderer.toneMappingExposure = v; });
+
+// character color & PBR params
+document.getElementById('modelColor').addEventListener('input', e => {
+  const hex = e.target.value;
+  modelMaterials.forEach(m => m.material.color.set(hex));
+});
+bindRange('modelMetalness', 'modelMetalnessVal', v => v.toFixed(2), v => {
+  modelMaterials.forEach(m => { m.material.metalness = v; });
+});
+bindRange('modelRoughness', 'modelRoughnessVal', v => v.toFixed(2), v => {
+  modelMaterials.forEach(m => { m.material.roughness = v; });
+});
+bindRange('envIntensity', 'envIntensityVal', v => v.toFixed(1), v => {
+  modelMaterials.forEach(m => { m.material.envMapIntensity = v; });
+});
+
+document.getElementById('resetColorBtn').addEventListener('click', () => {
+  modelMaterials.forEach(m => m.material.color.copy(m.originalColor));
+  document.getElementById('modelColor').value = '#ffffff';
+});
 
 // ---------- Resize ----------
 window.addEventListener('resize', () => {

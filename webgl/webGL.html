@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Character + Skybox Scene | Three.js</title>
+<title>Desert Character Viewer | Three.js PBR</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', system-ui, sans-serif; }
@@ -11,17 +11,17 @@
 
   #loading {
     position: fixed; inset: 0;
-    background: radial-gradient(circle at 50% 40%, #1a2340 0%, #05070f 70%);
+    background: radial-gradient(circle at 50% 40%, #3a2a1a 0%, #150d08 70%);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     color: #fff; z-index: 50; transition: opacity 0.6s ease;
   }
   #loading .spinner {
     width: 46px; height: 46px; border-radius: 50%;
-    border: 4px solid rgba(255,255,255,0.15); border-top-color: #7fd0ff;
+    border: 4px solid rgba(255,255,255,0.15); border-top-color: #ffcf8a;
     animation: spin 0.9s linear infinite; margin-bottom: 18px;
   }
-  #loading .label { font-size: 14px; letter-spacing: 0.5px; color: #aeeaff; opacity: 0.9; }
-  #loading .pct { font-size: 12px; color: #6f8bb3; margin-top: 6px; }
+  #loading .label { font-size: 14px; letter-spacing: 0.5px; color: #ffe4b8; opacity: 0.9; }
+  #loading .pct { font-size: 12px; color: #cfa06a; margin-top: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   #loading.hidden { opacity: 0; pointer-events: none; }
 
@@ -33,18 +33,18 @@
   }
   #ui button {
     pointer-events: auto;
-    background: rgba(15, 22, 40, 0.65);
+    background: rgba(40, 25, 12, 0.6);
     backdrop-filter: blur(8px);
-    border: 1px solid rgba(255,255,255,0.15);
-    color: #eaf6ff;
+    border: 1px solid rgba(255,220,170,0.2);
+    color: #fff3e0;
     padding: 9px 16px;
     border-radius: 999px;
     font-size: 13px;
     cursor: pointer;
     transition: all 0.2s ease;
   }
-  #ui button:hover { background: rgba(60, 120, 200, 0.55); border-color: rgba(255,255,255,0.35); transform: translateY(-2px); }
-  #ui button.active { background: #3f8ce8; border-color: #9cd0ff; box-shadow: 0 0 14px rgba(80,160,255,0.6); }
+  #ui button:hover { background: rgba(210, 130, 40, 0.55); border-color: rgba(255,255,255,0.35); transform: translateY(-2px); }
+  #ui button.active { background: #e08a2e; border-color: #ffd9a0; box-shadow: 0 0 14px rgba(255,170,60,0.6); }
 
   #title {
     position: fixed; top: 18px; left: 20px; z-index: 20;
@@ -52,32 +52,143 @@
     pointer-events: none;
   }
   #title h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.3px; }
-  #title p { font-size: 12px; color: #bcd4f0; margin-top: 4px; opacity: 0.85; }
+  #title p { font-size: 12px; color: #ffdfb0; margin-top: 4px; opacity: 0.85; }
 
   #hint {
-    position: fixed; top: 18px; right: 20px; z-index: 20;
-    color: #cfe4ff; font-size: 12px; text-align: right;
+    position: fixed; top: 18px; right: 66px; z-index: 20;
+    color: #ffe6c2; font-size: 12px; text-align: right;
     text-shadow: 0 2px 8px rgba(0,0,0,0.6); opacity: 0.75;
     pointer-events: none;
   }
+
+  /* ---- Settings panel ---- */
+  #panelToggle {
+    position: fixed; top: 14px; right: 16px; z-index: 30;
+    width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(40, 25, 12, 0.7); backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,220,170,0.25);
+    color: #ffe6c2; font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: transform 0.25s ease, background 0.2s ease;
+  }
+  #panelToggle:hover { background: rgba(210,130,40,0.6); }
+  #panelToggle.open { transform: rotate(90deg); }
+
+  #panel {
+    position: fixed; top: 64px; right: 16px; z-index: 29;
+    width: 260px; max-height: calc(100vh - 90px); overflow-y: auto;
+    background: rgba(25, 16, 10, 0.72); backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,220,170,0.18);
+    border-radius: 14px; padding: 16px;
+    color: #ffe9ce; font-size: 12px;
+    transform: translateX(300px); opacity: 0; pointer-events: none;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+  }
+  #panel.open { transform: translateX(0); opacity: 1; pointer-events: auto; }
+
+  #panel h3 {
+    font-size: 12px; letter-spacing: 0.6px; text-transform: uppercase;
+    color: #ffb85e; margin: 14px 0 8px; opacity: 0.9;
+  }
+  #panel h3:first-child { margin-top: 0; }
+
+  #panel .row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px; gap: 8px;
+  }
+  #panel .row label { flex: 1; opacity: 0.85; }
+  #panel .row input[type="range"] { flex: 1.4; accent-color: #e08a2e; }
+  #panel .row input[type="color"] {
+    width: 30px; height: 24px; border: none; border-radius: 6px;
+    background: none; cursor: pointer; padding: 0;
+  }
+  #panel .row .val { width: 34px; text-align: right; opacity: 0.7; font-variant-numeric: tabular-nums; }
+
+  #panel button.reset {
+    width: 100%; margin-top: 4px; padding: 7px;
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+    color: #ffe9ce; border-radius: 8px; cursor: pointer; font-size: 12px;
+  }
+  #panel button.reset:hover { background: rgba(255,255,255,0.16); }
+
+  #panel::-webkit-scrollbar { width: 6px; }
+  #panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
 </style>
 </head>
 <body>
 
 <div id="loading">
   <div class="spinner"></div>
-  <div class="label">Loading scene and characters...</div>
+  <div class="label">Creating sand dunes and loading character...</div>
   <div class="pct">0%</div>
 </div>
 
 <div id="title">
-  <h1>Character PBR Viewer — Three.js</h1>
-  <p>Model, Ground &amp; Dynamic Skybox</p>
+  <h1>Desert Character PBR Viewer — Three.js</h1>
+  <p>PBR Model · Sand Dunes · Dynamic Skybox</p>
 </div>
 
-<div id="hint">mouse click and drag to rotate • scroll to zoom</div>
+<div id="hint">mouse drag to rotate • scroll to zoom</div>
 
-<div id="ui"></div>
+<div id="panelToggle" title="ตั้งค่าแสง/สี">⚙</div>
+<div id="panel">
+  <h3>แสงอาทิตย์ (Sky)</h3>
+  <div class="row">
+    <label for="sunElevation">มุมสูงดวงอาทิตย์ (Elevation)</label>
+    <input type="range" id="sunElevation" min="2" max="85" step="1" value="28">
+    <span class="val" id="sunElevationVal">28°</span>
+  </div>
+  <div class="row">
+    <label for="sunAzimuth">ทิศดวงอาทิตย์ (Azimuth)</label>
+    <input type="range" id="sunAzimuth" min="0" max="360" step="1" value="140">
+    <span class="val" id="sunAzimuthVal">140°</span>
+  </div>
+
+  <h3>ไฟหลัก (Directional Light)</h3>
+  <div class="row">
+    <label for="sunIntensity">ความเข้มแสง (Intensity)</label>
+    <input type="range" id="sunIntensity" min="0" max="6" step="0.1" value="3.0">
+    <span class="val" id="sunIntensityVal">3.0</span>
+  </div>
+  <div class="row">
+    <label for="sunColor">สีแสง (Color)</label>
+    <input type="color" id="sunColor" value="#fff0d0">
+  </div>
+
+  <h3>แสงแวดล้อม (Ambient)</h3>
+  <div class="row">
+    <label for="hemiIntensity">ความเข้มแสงฟ้า/พื้น (Intensity)</label>
+    <input type="range" id="hemiIntensity" min="0" max="2" step="0.05" value="0.55">
+    <span class="val" id="hemiIntensityVal">0.55</span>
+  </div>
+  <div class="row">
+    <label for="exposure">ค่าแสงรวม (Exposure)</label>
+    <input type="range" id="exposure" min="0.1" max="2" step="0.05" value="0.85">
+    <span class="val" id="exposureVal">0.85</span>
+  </div>
+
+  <h3>สีและวัสดุตัวละคร (Model Colors & Materials)</h3>
+  <div class="row">
+    <label for="modelColor">สีโมเดล (Tint)</label>
+    <input type="color" id="modelColor" value="#ffffff">
+  </div>
+  <div class="row">
+    <label for="modelMetalness">Metalness</label>
+    <input type="range" id="modelMetalness" min="0" max="1" step="0.02" value="0.5">
+    <span class="val" id="modelMetalnessVal">0.50</span>
+  </div>
+  <div class="row">
+    <label for="modelRoughness">Roughness</label>
+    <input type="range" id="modelRoughness" min="0" max="1" step="0.02" value="0.5">
+    <span class="val" id="modelRoughnessVal">0.50</span>
+  </div>
+  <div class="row">
+    <label for="envIntensity">IBL Intensity</label>
+    <input type="range" id="envIntensity" min="0" max="3" step="0.1" value="1.2">
+    <span class="val" id="envIntensityVal">1.2</span>
+  </div>
+  <button class="reset" id="resetColorBtn">รีเซ็ตสีเดิมของโมเดล (Reset The Model Colors)</button>
+</div>
 
 <script type="importmap">
 {
@@ -88,6 +199,8 @@
 }
 </script>
 
-<script type="module" src="script.js"></script>
+<script type="module" src="script.js">
+
+</script>
 </body>
 </html>
