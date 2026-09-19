@@ -3,9 +3,429 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Portfolio 3D</title>
+    <style>
+        /* Global reset and dark page background so the 3D canvas fills the whole viewport */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            overflow: hidden;
+            background: #0b0b0f;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            color: #fff;
+        }
+        canvas { display: block; }
+
+        #loading {
+            /* Full-screen overlay shown while the model is being downloaded and parsed */
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            background: #0b0b0f;
+            z-index: 10;
+            transition: opacity 0.6s ease;
+            text-align: center;
+        }
+        #loading.hidden { opacity: 0; pointer-events: none; }
+
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(255, 255, 255, 0.15);
+            border-top-color: #6ea8ff;
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #progress-text { font-size: 14px; color: #9aa4b2; letter-spacing: 0.5px; }
+
+        #ui {
+            /* Top-right toolbar with the interactive viewer buttons */
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 5;
+        }
+        .btn {
+            background: rgba(20, 22, 30, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            cursor: pointer;
+            backdrop-filter: blur(6px);
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .btn:hover { background: rgba(40, 44, 58, 0.85); border-color: rgba(255, 255, 255, 0.35); }
+        .btn.active { background: #6ea8ff; border-color: #6ea8ff; color: #0b0b0f; }
+
+        #hint {
+            /* Bottom-center hint explaining the mouse interactions for orbiting, panning and zooming */
+            position: fixed;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+            font-size: 12px;
+            color: #9aa4b2;
+            background: rgba(20, 22, 30, 0.6);
+            padding: 8px 14px;
+            border-radius: 20px;
+            backdrop-filter: blur(6px);
+            white-space: nowrap;
+            pointer-events: none;
+        }
+        #fps {
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            z-index: 5;
+            font-size: 12px;
+            color: #6ea8ff;
+            font-variant-numeric: tabular-nums;
+        }
+        #texname {
+            position: fixed;
+            bottom: 56px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+            font-size: 12px;
+            color: #6ea8ff;
+            background: rgba(20, 22, 30, 0.6);
+            padding: 6px 12px;
+            border-radius: 20px;
+            backdrop-filter: blur(6px);
+            display: none;
+            max-width: 90vw;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+        #error {
+            /* Full-screen message shown only when the GLB model fails to load */
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(11, 11, 15, 0.9);
+            color: #ff7b72;
+            z-index: 20;
+            font-size: 15px;
+            padding: 24px;
+            text-align: center;
+        }
+        @media (max-width: 600px) {
+            #hint { white-space: normal; text-align: center; width: 90%; }
+        }
+    </style>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
 </head>
 <body>
-    
+    <div id="loading">
+        <div class="spinner"></div>
+        <div id="progress-text">Loading model…</div>
+    </div>
+    <div id="error"></div>
+
+    <div id="hint">Left-drag: Rotate &nbsp;•&nbsp; Right-drag: Pan &nbsp;•&nbsp; Scroll: Zoom</div>
+    <div id="fps"></div>
+
+    <div id="ui">
+        <button id="autoRotateBtn" class="btn active">Auto Rotate</button>
+        <button id="resetViewBtn" class="btn">Reset View</button>
+        <button id="loadTextureBtn" class="btn">Load Texture</button>
+        <button id="removeTextureBtn" class="btn">Remove Texture</button>
+        <button id="fullscreenBtn" class="btn">Fullscreen</button>
+    </div>
+    <input type="file" id="textureInput" accept="image/*" hidden>
+    <div id="texname"></div>
+
+    <script type="module">
+        // three.js and its add-ons are pulled from a CDN via the import map in <head>
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+        // Scene holds everything that is rendered; the dark background matches the page
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0b0b0f);
+
+        // Perspective camera with a reasonable near/far range for a building-sized model
+        const camera = new THREE.PerspectiveCamera(
+            45, window.innerWidth / window.innerHeight, 0.1, 3000
+        );
+        camera.position.set(8, 6, 12);
+
+        // The WebGL renderer draws the scene; anti-aliasing and tone mapping improve quality
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        document.body.appendChild(renderer.domElement);
+
+        // OrbitControls provides the rotate (left drag), pan (right drag) and zoom (scroll) interaction
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.screenSpacePanning = true;
+        controls.minDistance = 0.5;
+        controls.maxDistance = 200;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 1.2;
+        controls.target.set(0, 1, 0);
+
+        // A pre-baked environment map gives the PBR materials nice reflections without HDR files
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        const env = new RoomEnvironment();
+        scene.environment = pmrem.fromScene(env, 0.04).texture;
+        env.dispose();
+        pmrem.dispose();
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+        // Main light that also casts shadows onto the model and ground
+        const dirLight = new THREE.DirectionalLight(0xfff4e6, 2.0);
+        dirLight.position.set(10, 15, 8);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.set(2048, 2048);
+        scene.add(dirLight);
+
+        // Cool blue fill light from the opposite side to lift the shadows a little
+        const fillLight = new THREE.DirectionalLight(0x6ea8ff, 0.6);
+        fillLight.position.set(-8, 5, -6);
+        scene.add(fillLight);
+
+        // Simple reference grid that is repositioned onto the model floor after loading
+        const grid = new THREE.GridHelper(30, 30, 0x2a2f3a, 0x1a1e26);
+        scene.add(grid);
+
+        // Model state: every mesh is remembered together with its original materials so the
+        // "Remove Texture" button can restore the GLB as it was before any texture applied
+        let model;
+        let modelMeshes = [];
+        let originalMaterials = [];
+        const loader = new GLTFLoader();
+        const textureLoader = new THREE.TextureLoader();
+        const loadingEl = document.getElementById('loading');
+        const progressText = document.getElementById('progress-text');
+
+        loader.load(
+            'model/night_club.glb',
+            (gltf) => {
+                model = gltf.scene;
+                scene.add(model);
+
+                // Collect all loadable meshes and snapshot their materials for later texture work
+                model.traverse((child) => {
+                    if (child.isMesh) {
+                        modelMeshes.push(child);
+                        originalMaterials.push(child.material);
+                    }
+                });
+
+                // Compute bounding box so the camera can frame the whole model automatically
+                const box = new THREE.Box3().setFromObject(model);
+                const size = box.getSize(new THREE.Vector3());
+                const center = box.getCenter(new THREE.Vector3());
+
+                // Distance that fits the largest dimension into the camera's field of view
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const fitDistance = maxDim / (2 * Math.tan((camera.fov * Math.PI) / 360)) * 1.5;
+
+                controls.target.copy(center);
+                camera.position.set(center.x + fitDistance * 0.7, center.y + fitDistance * 0.5, center.z + fitDistance);
+                controls.maxDistance = fitDistance * 8;
+                controls.update();
+
+                // Place the grid under the model instead of at the world origin
+                grid.position.y = center.y - size.y / 2;
+
+                // Enable shadows on every mesh so the directional light can affect them
+                model.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+
+                showUI();
+                loadingEl.classList.add('hidden');
+                progressText.textContent = 'Done';
+            },
+            (xhr) => {
+                // Update the progress text while the GLB bytes are downloading
+                if (xhr.total) {
+                    const pct = Math.round((xhr.loaded / xhr.total) * 100);
+                    progressText.textContent = `Loading model… ${pct}%`;
+                }
+            },
+            (err) => {
+                console.error(err);
+                loadingEl.classList.add('hidden');
+                const errorEl = document.getElementById('error');
+                errorEl.style.display = 'flex';
+                errorEl.textContent = 'Failed to load model. Please check the path: model/night_club.glb';
+            }
+        );
+
+        // Keep the toolbar hidden until the model has loaded
+        function showUI() {
+            document.querySelectorAll('#ui .btn').forEach((b) => (b.style.display = 'initial'));
+        }
+        document.querySelectorAll('#ui .btn').forEach((b) => (b.style.display = 'none'));
+
+        // Toggle the automatic camera rotation around the model
+        document.getElementById('autoRotateBtn').addEventListener('click', (e) => {
+            controls.autoRotate = !controls.autoRotate;
+            e.currentTarget.classList.toggle('active', controls.autoRotate);
+        });
+
+        // Re-frame the camera onto the model, same as on first load
+        document.getElementById('resetViewBtn').addEventListener('click', () => {
+            if (!model) return;
+            const box = new THREE.Box3().setFromObject(model);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const dist = maxDim / (2 * Math.tan((camera.fov * Math.PI) / 360)) * 1.5;
+            controls.target.copy(center);
+            camera.position.set(center.x + dist * 0.7, center.y + dist * 0.5, center.z + dist);
+            controls.update();
+        });
+
+        // Toggle the browser's native fullscreen mode on the whole document
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Launch the hidden file picker; only shown after the model finished loading
+        const texInput = document.getElementById('textureInput');
+        const texNameEl = document.getElementById('texname');
+        document.getElementById('loadTextureBtn').addEventListener('click', () => {
+            if (!model) return;
+            texInput.click();
+        });
+
+        // Read the chosen image, load it as a texture and apply it across the model UVs
+        texInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file || !model) return;
+            const url = URL.createObjectURL(file);
+            textureLoader.load(
+                url,
+                (texture) => {
+                    applyTexture(texture, file.name);
+                    URL.revokeObjectURL(url);
+                },
+                undefined,
+                (err) => {
+                    console.error(err);
+                    URL.revokeObjectURL(url);
+                }
+            );
+            e.target.value = '';
+        });
+
+        // Restore the original GLB materials, discarding any applied texture
+        document.getElementById('removeTextureBtn').addEventListener('click', () => {
+            if (!model) return;
+            modelMeshes.forEach((mesh, i) => {
+                if (Array.isArray(mesh.material) && Array.isArray(originalMaterials[i])) {
+                    mesh.material = originalMaterials[i].map((m) => m.clone());
+                } else if (!Array.isArray(mesh.material)) {
+                    const original = originalMaterials[i];
+                    if (Array.isArray(original)) mesh.material = original[0].clone();
+                    else mesh.material = original.clone();
+                }
+            });
+            texNameEl.style.display = 'none';
+            texNameEl.textContent = '';
+        });
+
+        // Clones every material and swaps in the new texture, tinted pure white so the
+        // image shows at full strength; originals are never mutated
+        function applyTexture(texture, name) {
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+            texture.needsUpdate = true;
+            texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+
+            modelMeshes.forEach((mesh, i) => {
+                const orig = originalMaterials[i];
+                const applyTo = (mat) => {
+                    const mapped = mat.clone();
+                    mapped.map = texture;
+                    mapped.color = new THREE.Color(0xffffff);
+                    mapped.needsUpdate = true;
+                    return mapped;
+                };
+                if (Array.isArray(mesh.material)) {
+                    mesh.material = mesh.material.map((m, j) =>
+                        Array.isArray(orig) ? applyTo(orig[j]) : applyTo(m)
+                    );
+                } else {
+                    mesh.material = Array.isArray(orig) ? applyTo(orig[0]) : applyTo(orig);
+                }
+            });
+
+            texNameEl.textContent = `Texture: ${name}`;
+            texNameEl.style.display = 'block';
+        }
+
+        // Keep the canvas filling the window when the browser is resized
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Simple frame counter to display a live FPS readout in the corner
+        let frames = 0;
+        let lastTime = performance.now();
+        const fpsEl = document.getElementById('fps');
+
+        // Main render loop: orbit, render and refresh the FPS counter twice a second
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+
+            frames++;
+            const now = performance.now();
+            if (now - lastTime >= 500) {
+                fpsEl.textContent = `${Math.round((frames * 1000) / (now - lastTime))} FPS`;
+                frames = 0;
+                lastTime = now;
+            }
+        }
+        animate();
+    </script>
 </body>
 </html>
