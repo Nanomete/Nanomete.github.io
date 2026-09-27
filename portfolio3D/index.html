@@ -227,6 +227,11 @@
         let model;
         let modelMeshes = [];
         let originalMaterials = [];
+        // AnimationMixer plays the animation clips baked into the GLB. It only exists when
+        // the loaded file actually contains animations, otherwise it stays null and the
+        // play/pause button is hidden.
+        let mixer = null;
+        const clock = new THREE.Clock();
         const loader = new GLTFLoader();
         const textureLoader = new THREE.TextureLoader();
         const loadingEl = document.getElementById('loading');
@@ -272,6 +277,18 @@
                 });
 
                 showUI();
+
+                // If the GLB ships animation clips, start them all looping so the viewer
+                // shows the animated version of the model straight away
+                if (gltf.animations && gltf.animations.length) {
+                    mixer = new THREE.AnimationMixer(model);
+                    gltf.animations.forEach((clip) => {
+                        const action = mixer.clipAction(clip);
+                        action.setLoop(THREE.LoopRepeat, Infinity);
+                        action.play();
+                    });
+                }
+
                 loadingEl.classList.add('hidden');
                 progressText.textContent = 'Done';
             },
@@ -291,7 +308,8 @@
             }
         );
 
-        // Keep the toolbar hidden until the model has loaded
+        // Keep the toolbar hidden until the model has loaded. The animation button stays
+        // hidden until the GLB is confirmed to contain animation clips.
         function showUI() {
             document.querySelectorAll('#ui .btn').forEach((b) => (b.style.display = 'initial'));
         }
@@ -414,6 +432,9 @@
         // Main render loop: orbit, render and refresh the FPS counter twice a second
         function animate() {
             requestAnimationFrame(animate);
+            // Advances the animation clips by the frame's elapsed time (no-op without a mixer)
+            if (mixer) mixer.update(clock.getDelta());
+            else clock.getDelta();
             controls.update();
             renderer.render(scene, camera);
 
