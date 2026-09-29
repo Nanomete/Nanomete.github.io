@@ -1,19 +1,28 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Portfolio 3D</title>
     <style>
         /* Global reset and dark page background so the 3D canvas fills the whole viewport */
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
             overflow: hidden;
             background: #0b0b0f;
             font-family: 'Segoe UI', system-ui, sans-serif;
             color: #fff;
         }
-        canvas { display: block; }
+
+        canvas {
+            display: block;
+        }
 
         #loading {
             /* Full-screen overlay shown while the model is being downloaded and parsed */
@@ -29,7 +38,11 @@
             transition: opacity 0.6s ease;
             text-align: center;
         }
-        #loading.hidden { opacity: 0; pointer-events: none; }
+
+        #loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
 
         .spinner {
             width: 48px;
@@ -39,9 +52,18 @@
             border-radius: 50%;
             animation: spin 0.9s linear infinite;
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
 
-        #progress-text { font-size: 14px; color: #9aa4b2; letter-spacing: 0.5px; }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        #progress-text {
+            font-size: 14px;
+            color: #9aa4b2;
+            letter-spacing: 0.5px;
+        }
 
         #ui {
             /* Top-right toolbar with the interactive viewer buttons */
@@ -53,6 +75,7 @@
             gap: 8px;
             z-index: 5;
         }
+
         .btn {
             background: rgba(20, 22, 30, 0.7);
             border: 1px solid rgba(255, 255, 255, 0.15);
@@ -64,8 +87,17 @@
             backdrop-filter: blur(6px);
             transition: background 0.2s, border-color 0.2s;
         }
-        .btn:hover { background: rgba(40, 44, 58, 0.85); border-color: rgba(255, 255, 255, 0.35); }
-        .btn.active { background: #6ea8ff; border-color: #6ea8ff; color: #0b0b0f; }
+
+        .btn:hover {
+            background: rgba(40, 44, 58, 0.85);
+            border-color: rgba(255, 255, 255, 0.35);
+        }
+
+        .btn.active {
+            background: #6ea8ff;
+            border-color: #6ea8ff;
+            color: #0b0b0f;
+        }
 
         #hint {
             /* Bottom-center hint explaining the mouse interactions for orbiting, panning and zooming */
@@ -83,6 +115,7 @@
             white-space: nowrap;
             pointer-events: none;
         }
+
         #fps {
             position: fixed;
             top: 16px;
@@ -92,6 +125,7 @@
             color: #6ea8ff;
             font-variant-numeric: tabular-nums;
         }
+
         #texname {
             position: fixed;
             bottom: 56px;
@@ -111,6 +145,7 @@
             white-space: nowrap;
             pointer-events: none;
         }
+
         #error {
             /* Full-screen message shown only when the GLB model fails to load */
             position: fixed;
@@ -125,8 +160,13 @@
             padding: 24px;
             text-align: center;
         }
+
         @media (max-width: 600px) {
-            #hint { white-space: normal; text-align: center; width: 90%; }
+            #hint {
+                white-space: normal;
+                text-align: center;
+                width: 90%;
+            }
         }
     </style>
 
@@ -139,6 +179,7 @@
     }
     </script>
 </head>
+
 <body>
     <div id="loading">
         <div class="spinner"></div>
@@ -198,25 +239,25 @@
         controls.target.set(0, 1, 0);
 
         // A pre-baked environment map gives the PBR materials nice reflections without HDR files
-        const pmrem = new THREE.PMREMGenerator(renderer);
-        const env = new RoomEnvironment();
-        scene.environment = pmrem.fromScene(env, 0.04).texture;
-        env.dispose();
-        pmrem.dispose();
+        // const pmrem = new THREE.PMREMGenerator(renderer);
+        // const env = new RoomEnvironment();
+        // scene.environment = pmrem.fromScene(env, 0.04).texture;
+        // env.dispose();
+        // pmrem.dispose();
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
         // Main light that also casts shadows onto the model and ground
-        const dirLight = new THREE.DirectionalLight(0xfff4e6, 2.0);
-        dirLight.position.set(10, 15, 8);
-        dirLight.castShadow = true;
-        dirLight.shadow.mapSize.set(2048, 2048);
-        scene.add(dirLight);
+        // const dirLight = new THREE.DirectionalLight(0xfff4e6, 2.0);
+        // dirLight.position.set(10, 15, 8);
+        // dirLight.castShadow = true;
+        // dirLight.shadow.mapSize.set(2048, 2048);
+        // scene.add(dirLight);
 
         // Cool blue fill light from the opposite side to lift the shadows a little
-        const fillLight = new THREE.DirectionalLight(0x6ea8ff, 0.6);
-        fillLight.position.set(-8, 5, -6);
-        scene.add(fillLight);
+        // const fillLight = new THREE.DirectionalLight(0x6ea8ff, 0.6);
+        // fillLight.position.set(-8, 5, -6);
+        // scene.add(fillLight);
 
         // Simple reference grid that is repositioned onto the model floor after loading
         const grid = new THREE.GridHelper(30, 30, 0x2a2f3a, 0x1a1e26);
@@ -236,6 +277,31 @@
         const textureLoader = new THREE.TextureLoader();
         const loadingEl = document.getElementById('loading');
         const progressText = document.getElementById('progress-text');
+
+        // Point light: ไฟกระจายรอบทิศทางจากจุดเดียว
+        const pointLight1 = new THREE.PointLight(0xaa00ff, 50, 0, 2); // สี, intensity, distance, decay
+        pointLight1.position.set(0, 1, 1);
+        pointLight1.castShadow = true;
+        pointLight1.shadow.mapSize.set(500, 500);
+        pointLight1.shadow.bias = -0.0005;
+        scene.add(pointLight1);
+        
+        const pointLight2 = new THREE.PointLight(0xaaff88, 80, 0, 2); // สี, intensity, distance, decay
+        pointLight2.position.set(0, 9, 1);
+        pointLight2.castShadow = true;
+        pointLight2.shadow.mapSize.set(500, 500);
+        pointLight2.shadow.bias = -0.0005;
+        scene.add(pointLight2);
+        
+        const pointLight3 = new THREE.PointLight(0x00aaff, 100, 0, 2); // สี, intensity, distance, decay
+        pointLight3.position.set(4, 5, 1);
+        pointLight3.castShadow = true;
+        pointLight3.shadow.mapSize.set(500, 500);
+        pointLight3.shadow.bias = -0.0005;
+        scene.add(pointLight3);
+
+        // (ไม่บังคับ) ตัวช่วยแสดงตำแหน่งไฟ เอาไว้ดีบั๊ก
+        // scene.add(new THREE.PointLightHelper(pointLight, 0.3));
 
         loader.load(
             'model/portfolio.glb',
@@ -449,4 +515,5 @@
         animate();
     </script>
 </body>
+
 </html>
