@@ -264,6 +264,115 @@
         addPointLight(0x00aaff, 100, 3, 3, 1);
         addPointLight(0xffffff, 50, -3, 5, 2);
 
+        // ---------- Flagpole with a waving flag (flag is animated by shaders on the GPU) ----------
+        const FLAG_W = 1.4;      // flag width
+        const FLAG_H = 0.9;      // flag height
+        const POLE_H = 3;        // pole height
+
+        const uniforms = {
+            uTime: { value: 0.0 },
+            uLightDir: { value: new THREE.Vector3(0.4, 1.0, 0.8).normalize() },
+            uWidth: { value: FLAG_W }
+        };
+
+        // Vertex shader: runs per vertex. Moves each vertex along z with travelling sine waves.
+        // The flag hangs to the LEFT of the pole: the pole side (uv.x = 1) stays still and
+        // the free end (uv.x = 0, far left) waves the most.
+        const vertexShader = `
+            uniform float uTime;
+            uniform float uWidth;
+
+            varying vec2 vUv;
+            varying vec3 vNormal;
+
+            void main() {
+                vUv = uv;
+
+                float f = 1.0 - uv.x;                                       // 0 at the pole, 1 at the free end
+                float amp = f * 0.25;                                       // wave strength grows away from the pole
+                float phase = position.x * 4.0 + uTime * 3.0 + position.y * 1.5; // + time: wave travels toward -x (left)
+                float phase2 = position.x * 7.0 + uTime * 4.5;
+
+                vec3 pos = position;
+                pos.z += sin(phase) * amp + sin(phase2) * 0.04 * f;
+
+                // slope of the wave (derivative) -> new normal, so the lighting follows the folds
+                float dx = cos(phase) * 4.0 * amp - sin(phase) * 0.25 / uWidth
+                         + cos(phase2) * 7.0 * 0.04 * f - sin(phase2) * 0.04 / uWidth;
+                float dy = cos(phase) * 1.5 * amp;
+                vec3 n = normalize(vec3(-dx, -dy, 1.0));
+                vNormal = normalize(mat3(modelMatrix) * n);
+
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            }
+        `;
+
+        // Fragment shader: runs per pixel. Draws the stripes procedurally (Thai flag: red-white-blue-white-red
+        // in a 1:1:2:1:1 ratio) and lights both sides of the cloth.
+        const fragmentShader = `
+            precision highp float;
+
+            uniform vec3 uLightDir;
+
+            varying vec2 vUv;
+            varying vec3 vNormal;
+
+            void main() {
+                vec3 red   = vec3(0.65, 0.07, 0.17);
+                vec3 white = vec3(0.96, 0.96, 0.96);
+                vec3 blue  = vec3(0.17, 0.17, 0.35);
+
+                float y = vUv.y * 6.0;                       // 6 units tall
+                vec3 color = red;
+                color = mix(color, white, step(1.0, y));
+                color = mix(color, blue,  step(2.0, y));
+                color = mix(color, white, step(4.0, y));
+                color = mix(color, red,   step(5.0, y));
+
+                vec3 N = normalize(vNormal);
+                if (!gl_FrontFacing) N = -N;                 // back side of the cloth
+                float diffuse = max(dot(N, normalize(uLightDir)), 0.0);
+                float light = 0.55 + 0.6 * diffuse;
+
+                gl_FragColor = vec4(color * light, 1.0);
+            }
+        `;
+
+        const flagGroup = new THREE.Group();
+        flagGroup.position.set(0, 2, 0);
+        scene.add(flagGroup);
+
+        // pole + golden ball on top (normal lit materials)
+        const pole = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.04, 0.05, POLE_H, 16),
+            new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.3 })
+        );
+        pole.position.y = POLE_H / 2;
+        flagGroup.add(pole);
+
+        const ball = new THREE.Mesh(
+            new THREE.SphereGeometry(0.08, 16, 16),
+            new THREE.MeshStandardMaterial({ color: 0xffc83d, metalness: 0.9, roughness: 0.25 })
+        );
+        ball.position.y = POLE_H + 0.05;
+        flagGroup.add(ball);
+
+        // flag: a plane with many segments so the vertex shader can bend it smoothly
+        const flagGeometry = new THREE.PlaneGeometry(FLAG_W, FLAG_H, 48, 24);
+        flagGeometry.translate(-FLAG_W / 2, -FLAG_H / 2, 0); // right edge at x = 0 (the pole side), top edge at y = 0
+
+        const flag = new THREE.Mesh(
+            flagGeometry,
+            new THREE.ShaderMaterial({
+                vertexShader,
+                fragmentShader,
+                uniforms,
+                side: THREE.DoubleSide
+            })
+        );
+        flag.position.set(-0.04, POLE_H - 0.1, 0); // attached to the left side of the pole, near the top
+        flagGroup.add(flag);
+
         // ---------- Model ----------
         let model;
         let mixer = null;
@@ -504,6 +613,7 @@
             requestAnimationFrame(animate);
             if (mixer) mixer.update(clock.getDelta());
             else clock.getDelta();
+            uniforms.uTime.value = performance.now() * 0.001; // send time to the shaders
             updateCameraTween();
             controls.update();
             updatePopup();
