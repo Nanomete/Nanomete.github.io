@@ -373,6 +373,90 @@
         flag.position.set(-0.04, POLE_H - 0.1, 0); // attached to the left side of the pole, near the top
         flagGroup.add(flag);
 
+        // ---------- Toon-shaded Moon (custom vertex + fragment shaders) ----------
+        // A moon texture is sampled in the fragment shader and lit with cel/toon shading:
+        // the diffuse term is quantised into flat light bands for the "cartoon" look. The moon
+        // sits on a pivot so it can orbit through space while also spinning on its own axis.
+
+        const moonTexture = new THREE.TextureLoader().load(
+            'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/planets/moon_1024.jpg'
+        );
+        moonTexture.colorSpace = THREE.SRGBColorSpace;
+        moonTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+        const moonPivot = new THREE.Group();
+        moonPivot.position.set(0, 6, 0);
+        scene.add(moonPivot);
+
+        const moonUniforms = {
+            uMap: { value: moonTexture },
+            uLightDir: { value: new THREE.Vector3(1.0, 0.5, 0.7).normalize() },
+            uBands: { value: 4.0 }
+        };
+
+        // Vertex shader: passes the uv (for the moon texture) plus world-space normal and
+        // position (for lighting and the rim) to the fragment stage.
+        const moonVertexShader = `
+            varying vec2 vUv;
+            varying vec3 vNormalW;
+            varying vec3 vPosW;
+
+            void main() {
+                vUv = uv;
+                vNormalW = normalize(mat3(modelMatrix) * normal);
+                vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                vPosW = worldPos.xyz;
+                gl_Position = projectionMatrix * viewMatrix * worldPos;
+            }
+        `;
+
+        // Fragment shader: samples the moon texture, then applies toon (banded) lighting plus a
+        // soft grey rim glow.
+        const moonFragmentShader = `
+            precision highp float;
+
+            uniform sampler2D uMap;
+            uniform vec3 uLightDir;
+            uniform float uBands;
+
+            varying vec2 vUv;
+            varying vec3 vNormalW;
+            varying vec3 vPosW;
+
+            void main() {
+                vec3 base = texture2D(uMap, vUv).rgb;
+
+                // ---- toon / cel shading ----
+                vec3 N = normalize(vNormalW);
+                vec3 L = normalize(uLightDir);
+                float diff = max(dot(N, L), 0.0);
+
+                float toon = floor(diff * uBands + 0.5) / uBands; // flat light steps
+                vec3 color = base * (0.28 + 0.90 * toon);
+
+                // soft grey rim glow so the dark side still reads against the background
+                vec3 viewDir = normalize(cameraPosition - vPosW);
+                float rim = pow(1.0 - max(dot(N, viewDir), 0.0), 3.0);
+                color += vec3(0.85, 0.87, 0.95) * rim * 0.25;
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        const MOON_ORBIT_RADIUS = 2.5;
+
+        const moon = new THREE.Mesh(
+            new THREE.SphereGeometry(0.8, 128, 64),
+            new THREE.ShaderMaterial({
+                vertexShader: moonVertexShader,
+                fragmentShader: moonFragmentShader,
+                uniforms: moonUniforms
+            })
+        );
+        moon.position.set(MOON_ORBIT_RADIUS, 0, 0); // offset from the pivot -> orbits when pivot turns
+        moon.rotation.z = THREE.MathUtils.degToRad(6.7); // slight axial tilt
+        moonPivot.add(moon);
+
         // ---------- Model ----------
         let model;
         let mixer = null;
@@ -611,9 +695,11 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            if (mixer) mixer.update(clock.getDelta());
-            else clock.getDelta();
-            uniforms.uTime.value = performance.now() * 0.001; // send time to the shaders
+            const dt = clock.getDelta();
+            if (mixer) mixer.update(dt);
+            uniforms.uTime.value = performance.now() * 0.001; // send time to the flag shader
+            moonPivot.rotation.y += dt * 0.8;                // orbit through space
+            moon.rotation.y += dt * 0.15;                     // spin the moon on its own axis
             updateCameraTween();
             controls.update();
             updatePopup();
